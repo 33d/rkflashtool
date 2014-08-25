@@ -46,6 +46,7 @@ int _CRT_fmode = _O_BINARY;
 #define RKFT_IDB_INCR       0x20
 #define RKFT_MEM_INCR       0x80
 #define RKFT_OFF_INCR       (RKFT_BLOCKSIZE>>9)
+#define RKFT_FLASHINFO_SIZE 512
 
 #define RKFT_CMD_TESTUNITREADY      0x80000600
 #define RKFT_CMD_READFLASHID        0x80000601
@@ -135,6 +136,7 @@ static void usage(void) {
 //          "\trkflashtool f                 >outfile \tread fuses\n"
 //          "\trkflashtool g                 <infile  \twrite fuses\n"
           "\trkflashtool p >file             \tfetch parameters\n"
+          "\trkflashtool l >file             \tread flashinfo\n"
           "\trkflashtool e offset nsectors   \terase flash (fill with 0xff)\n"
          );
 }
@@ -159,6 +161,8 @@ static void send_buf(unsigned int s) {
 
 static void recv_res(void) {
     libusb_bulk_transfer(h, 1|LIBUSB_ENDPOINT_IN, res, sizeof(res), &tmp, 0);
+    if (res[12])
+        fatal("Error flag set");
 }
 
 static void recv_buf(unsigned int s) {
@@ -181,6 +185,7 @@ int main(int argc, char **argv) {
 
     switch(action) {
     case 'b':
+    case 'l':
         if (argc) usage(); 
         break;
     case 'e':
@@ -196,7 +201,7 @@ int main(int argc, char **argv) {
         if (argc) usage();
         offset = 0;
         size   = 1024;
-        break; 
+        break;
     default:
         usage();
     }
@@ -288,6 +293,18 @@ int main(int argc, char **argv) {
             info("size:  0x%08x\n", size);
 
             if (write(1, &buf[8], size) <= 0)
+                fatal("Write error! Disk full?\n");
+        }
+        break;
+    case 'l':   /* Retreive flashinfo */
+        {
+            info("reading parameters at offset 0x%08x\n", offset);
+
+            send_cmd(RKFT_CMD_READFLASHINFO, offset, RKFT_OFF_INCR);
+            recv_buf(RKFT_FLASHINFO_SIZE);
+            recv_res();
+
+            if (write(1, buf, RKFT_FLASHINFO_SIZE) <= 0)
                 fatal("Write error! Disk full?\n");
         }
         break;
